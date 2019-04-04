@@ -7,7 +7,8 @@ class SnakeGame:
 
     def __init__(self, dim, square_interval):
         self.P1_COLOR = (255,255,255)
-        self.FOOD_COLOR = (100,100,100)    
+        self.FOOD_COLOR = (150,150,150)   
+        self.BORDER_COLOR = (75,75,75)
 
         self.x = dim
         self.y = dim
@@ -22,7 +23,7 @@ class SnakeGame:
         availabe = []
         for row in range(self.interval):
             for col in range(self.interval):
-                if self.grid[row][col] == 0:
+                if self.grid[row][col] == 0 and (0 < row < self.interval - 1) and (0 < col < self.interval - 1):
                     availabe.append((col, row))
         return r.choice(availabe)
 
@@ -66,10 +67,16 @@ class SnakeGame:
                 screen.fill((0,0,0))
                 self._reset_board()
 
+                # Draw Border
+                pg.draw.rect(screen, self.BORDER_COLOR, (0, 0, self.x, self.snake_dimensions*2))
+                pg.draw.rect(screen, self.BORDER_COLOR, (0, 0, self.snake_dimensions*2, self.y))
+                pg.draw.rect(screen, self.BORDER_COLOR, (0, self.y - self.snake_dimensions*2, self.x, self.snake_dimensions*2))
+                pg.draw.rect(screen, self.BORDER_COLOR, (self.x - self.snake_dimensions*2, 0, self.snake_dimensions*2, self.y))
+
                 for position in self.P1_POS:
                     sx = position[0] 
                     sy = position[1] 
-                    if self.grid[sy][sx] == 1 or (sx >= self.interval - 1) or (sy >= self.interval - 1) or (sx < 0) or (sy < 0):
+                    if self.grid[sy][sx] == 1 or (sx >= self.interval - 1) or (sy >= self.interval - 1) or (sx <= 0) or (sy <= 0):
                         self.game_over = True
                         break
                         
