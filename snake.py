@@ -2,6 +2,8 @@ import keyboard
 import pygame as pg
 import time
 import random as r
+import numpy as np
+import json
 
 class SnakeGame:
 
@@ -32,15 +34,18 @@ class SnakeGame:
         for row in range(self.interval):
             a = []
             for col in range(self.interval):
-                a.append(0)
+                if row == 0 or col == 0 or row == self.interval-1 or col == self.interval-1:
+                    a.append(3)
+                else:
+                    a.append(0)
             self.grid.append(a)
 
     def _reset_game(self):
         self._reset_board()
         self.game_over = False
-        self.snake_length = 1
+        self.snake_length = 10
         self.P1_POS = [(self.interval//2, self.interval//2)]
-        self.food_position = self._get_random_location()    
+        self.food_position = self._get_random_location()
         self.P1_DIR = r.randint(0, 3)
 
     def get_game_state(self):
@@ -54,11 +59,70 @@ class SnakeGame:
                         a = True
             return int(a) + 1
 
-    def run_game(self, delay, games):
+    def get_input_data(self, pos):
+        """
+        Input is a vector with dimension (10,)
+        """ 
+        x, y = pos
+        fx, fy = self.food_position
+        output = np.zeros((10,))
+        adjacent_data = self.get_adjacent_data(pos)
+        adjacent_data.pop(self.P1_DIR)
+
+        # Get Wall
+        output[0] = float(adjacent_data[0] == 3)
+        output[1] = float(adjacent_data[1] == 3)
+        output[2] = float(adjacent_data[2] == 3)
+
+        # Get Body
+        output[3] = float(adjacent_data[0] == 1)
+        output[4] = float(adjacent_data[1] == 1)
+        output[5] = float(adjacent_data[2] == 1)
+
+        # Get Food
+        output[6] = float(fx == x and fy < y) # Food Above
+        output[7] = float(fx == x and fy > y) # Food Below
+        output[8] = float(fy == y and fx < x) # Food Left
+        output[9] = float(fy == y and fx > x) # Food Right
+        
+        return output
+
+    def get_adjacent_data(self, pos):
+       
+        x, y = pos
+
+        down, up, right, left = None, None, None, None
+
+        if self.check_position((x, y+1)):
+            down = self.grid[x][y+1]
+        
+        if self.check_position((x, y-1)):
+            up = self.grid[x][y-1]
+        
+        if self.check_position((x+1, y)):
+            right = self.grid[x+1][y]
+        
+        if self.check_position((x-1, y)):
+            left = self.grid[x-1][y]
+        
+        a = [down, up, right, left]
+        return a
+
+    def check_position(self, pos):
+        x, y = pos
+        return not (x < 0 or y < 0 or x > self.interval-1 or y > self.interval-1)
+    
+    def run_game(self, delay, games=None):
 
         screen = pg.display.set_mode((self.x, self.y))
-        
-        for game in range(games):
+
+        game = 0
+        k = 10
+
+        if games:
+            k = games
+
+        while game < k:
 
             self._reset_game()
 
@@ -76,7 +140,7 @@ class SnakeGame:
                 for position in self.P1_POS:
                     sx = position[0] 
                     sy = position[1] 
-                    if self.grid[sy][sx] == 1 or (sx >= self.interval - 1) or (sy >= self.interval - 1) or (sx <= 0) or (sy <= 0):
+                    if self.grid[sy][sx] == 1 or sx <= 0 or sy <= 0 or sx >= self.interval-1 or sy >= self.interval-1:
                         self.game_over = True
                         break
                         
@@ -94,7 +158,11 @@ class SnakeGame:
                     if self.P1_POS[0] == self.food_position:
                         self.food_position = self._get_random_location()    
                         self.snake_length += 1
+
+                    vision_data = self.get_input_data(self.P1_POS[0])
+                    print(vision_data)
                 
+
                     if keyboard.is_pressed('w'):
                         self.P1_DIR = 0
                     elif keyboard.is_pressed('a'):
@@ -127,12 +195,15 @@ class SnakeGame:
 
                     time.sleep(delay)
             
-            print(f"Game {game + 1} Over.", "Size:", self.snake_length)
+            print("GAME OVER.", "Score:", self.snake_length)
+            
+            if games:
+                game += 1
 
 
 def main():
     snake = SnakeGame(500, 20)
-    snake.run_game(0.065, 3)
+    snake.run_game(0.08)
 
 if __name__ == "__main__":
     main()
