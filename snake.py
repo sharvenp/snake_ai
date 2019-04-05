@@ -23,14 +23,19 @@ class SnakeGame:
         
     def _get_random_location(self):
         availabe = []
+
+        # Get a list of all possible locations that are not occupied or on an edge
         for row in range(self.interval):
             for col in range(self.interval):
-                if self.grid[row][col] == 0 and (0 < row < self.interval - 1) and (0 < col < self.interval - 1):
+                if self.grid[row][col] == 0 and (1 < row < self.interval - 2) and (1 < col < self.interval - 2):
                     availabe.append((col, row))
         return r.choice(availabe)
 
     def _reset_board(self):
+
         self.grid = []
+        
+        # Reset grid and draw border on grid
         for row in range(self.interval):
             a = []
             for col in range(self.interval):
@@ -41,6 +46,8 @@ class SnakeGame:
             self.grid.append(a)
 
     def _reset_game(self):
+
+        # Reset the game and init params
         self._reset_board()
         self.game_over = False
         self.snake_length = 1
@@ -49,6 +56,13 @@ class SnakeGame:
         self.P1_DIR = r.randint(0, 3)
 
     def get_game_state(self):
+    
+        """
+        0 - Game is over
+        1 - Game is in progress
+        2 - Player won
+        """
+    
         if self.game_over:
             return 0
         else:
@@ -61,7 +75,7 @@ class SnakeGame:
 
     def get_input_data(self, pos):
         """
-        Input is a vector with dimension (10,)
+        Input is a vector with dimension (13,)
         """ 
         x, y = pos
         fx, fy = self.food_position
@@ -86,6 +100,7 @@ class SnakeGame:
         output[10] = float(fy == y and fx < x) # Food Left
         output[11] = float(fy == y and fx > x) # Food Right
 
+        # Current movement direction
         output[12] = (self.P1_DIR+1)/4
 
         return output
@@ -118,6 +133,7 @@ class SnakeGame:
     def run_game(self, delay, games=None):
 
         screen = pg.display.set_mode((self.x, self.y))
+        training_labels = []
 
         game = 0
         k = 10
@@ -140,17 +156,23 @@ class SnakeGame:
                 pg.draw.rect(screen, self.BORDER_COLOR, (0, self.y - self.snake_dimensions*2, self.x, self.snake_dimensions*2))
                 pg.draw.rect(screen, self.BORDER_COLOR, (self.x - self.snake_dimensions*2, 0, self.snake_dimensions*2, self.y))
 
+
                 for position in self.P1_POS:
                     sx = position[0] 
                     sy = position[1] 
+
+                    # Check If Snake Ate Itself
                     if self.grid[sy][sx] == 1 or sx <= 0 or sy <= 0 or sx >= self.interval-1 or sy >= self.interval-1:
                         self.game_over = True
                         break
                         
+                    # Draw Snake
                     pg.draw.rect(screen, self.P1_COLOR, (sx*self.i, sy*self.i, self.snake_dimensions*2, self.snake_dimensions*2))                    
                     self.grid[sy][sx] = 1
                 
                 if self.get_game_state:
+
+                    # Draw Food
                     fx = self.food_position[0]
                     fy = self.food_position[1]            
                     pg.draw.rect(screen, self.FOOD_COLOR, (fx*self.i, fy*self.i, self.snake_dimensions*2, self.snake_dimensions*2))           
@@ -158,14 +180,12 @@ class SnakeGame:
                 
                     pg.display.update()
                             
+                    # Check If Snake Ate Food
                     if self.P1_POS[0] == self.food_position:
                         self.food_position = self._get_random_location()    
                         self.snake_length += 1
 
-                    vision_data = self.get_input_data(self.P1_POS[0])
-                    print(vision_data)
-                
-
+                    # Get Keyboard Input
                     if keyboard.is_pressed('w'):
                         self.P1_DIR = 0
                     elif keyboard.is_pressed('a'):
@@ -178,6 +198,7 @@ class SnakeGame:
                     if keyboard.is_pressed('/'):
                         quit(0)
                     
+                    # Update Current Position Based on Movement State
                     pos = None
                     curr_position = self.P1_POS[0]
                     curr_x = curr_position[0]
@@ -192,17 +213,16 @@ class SnakeGame:
                         curr_x += 1
                     pos = (curr_x % (self.interval), curr_y % (self.interval))    
                     
+                    # Pop end of snake to maintain size
                     self.P1_POS.insert(0, pos)
                     if len(self.P1_POS) > self.snake_length:
                         self.P1_POS.pop()
 
                     time.sleep(delay)
             
-            print("GAME OVER.", "Score:", self.snake_length)
-            
+            print("GAME OVER.", "Score:", self.snake_length) 
             if games:
                 game += 1
-
 
 def main():
     snake = SnakeGame(500, 20)
