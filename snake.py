@@ -43,7 +43,7 @@ class SnakeGame:
     def _reset_game(self):
         self._reset_board()
         self.game_over = False
-        self.snake_length = 10
+        self.snake_length = 1
         self.P1_POS = [(self.interval//2, self.interval//2)]
         self.food_position = self._get_random_location()
         self.P1_DIR = r.randint(0, 3)
@@ -65,31 +65,34 @@ class SnakeGame:
         """ 
         x, y = pos
         fx, fy = self.food_position
-        output = np.zeros((10,))
+        output = [0,0,0,0,0,0,0,0,0,0,0,0,0]
         adjacent_data = self.get_adjacent_data(pos)
-        adjacent_data.pop(self.P1_DIR)
 
-        # Get Wall
+        # Get Adjacent Wall
         output[0] = float(adjacent_data[0] == 3)
         output[1] = float(adjacent_data[1] == 3)
         output[2] = float(adjacent_data[2] == 3)
+        output[3] = float(adjacent_data[3] == 3)
 
-        # Get Body
-        output[3] = float(adjacent_data[0] == 1)
-        output[4] = float(adjacent_data[1] == 1)
-        output[5] = float(adjacent_data[2] == 1)
+        # Get Adjacent Body
+        output[4] = float(adjacent_data[0] == 1)
+        output[5] = float(adjacent_data[1] == 1)
+        output[6] = float(adjacent_data[2] == 1)
+        output[7] = float(adjacent_data[3] == 1)
 
-        # Get Food
-        output[6] = float(fx == x and fy < y) # Food Above
-        output[7] = float(fx == x and fy > y) # Food Below
-        output[8] = float(fy == y and fx < x) # Food Left
-        output[9] = float(fy == y and fx > x) # Food Right
-        
+        # Get Food Direction
+        output[8] = float(fx == x and fy < y) # Food Above
+        output[9] = float(fx == x and fy > y) # Food Below
+        output[10] = float(fy == y and fx < x) # Food Left
+        output[11] = float(fy == y and fx > x) # Food Right
+
+        output[12] = (self.P1_DIR+1)/4
+
         return output
 
     def get_adjacent_data(self, pos):
        
-        x, y = pos
+        y, x = pos
 
         down, up, right, left = None, None, None, None
 
@@ -105,7 +108,7 @@ class SnakeGame:
         if self.check_position((x-1, y)):
             left = self.grid[x-1][y]
         
-        a = [down, up, right, left]
+        a = [up, down, left, right]
         return a
 
     def check_position(self, pos):
