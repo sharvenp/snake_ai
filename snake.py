@@ -8,7 +8,7 @@ import json
 class SnakeGame:
 
     def __init__(self, dim, square_interval):
-        self.P1_COLOR = (255,255,255)
+        self.SNAKE_COLOR = (255,255,255)
         self.FOOD_COLOR = (150,150,150)   
         self.BORDER_COLOR = (75,75,75)
 
@@ -51,9 +51,9 @@ class SnakeGame:
         self._reset_board()
         self.game_over = False
         self.snake_length = 1
-        self.P1_POS = [(self.interval//2, self.interval//2)]
-        self.food_position = self._get_random_location()
-        self.P1_DIR = r.randint(0, 3)
+        self.curr_snake_positions = [(self.interval//2, self.interval//2)]
+        self.curr_food_position = self._get_random_location()
+        self.curr_snake_dir = r.randint(0, 3)
 
     def get_game_state(self):
     
@@ -73,14 +73,14 @@ class SnakeGame:
                         a = True
             return int(a) + 1
 
-    def get_input_data(self, pos):
+    def _get_training_data(self, pos):
         """
         Input is a vector with dimension (13,)
         """ 
         x, y = pos
-        fx, fy = self.food_position
+        fx, fy = self.curr_food_position
         output = [0,0,0,0,0,0,0,0,0,0,0,0,0]
-        adjacent_data = self.get_adjacent_data(pos)
+        adjacent_data = self._get_adjacent_data(pos)
 
         # Get Adjacent Wall
         output[0] = float(adjacent_data[0] == 3)
@@ -101,52 +101,51 @@ class SnakeGame:
         output[11] = float(fy == y and fx > x) # Food Right
 
         # Current movement direction
-        output[12] = (self.P1_DIR+1)/4
+        output[12] = (self.curr_snake_dir+1)/4
 
         return output
 
-    def get_adjacent_data(self, pos):
+    def _get_adjacent_data(self, pos):
        
         y, x = pos
 
         down, up, right, left = None, None, None, None
 
-        if self.check_position((x, y+1)):
+        if self._check_position((x, y+1)):
             down = self.grid[x][y+1]
         
-        if self.check_position((x, y-1)):
+        if self._check_position((x, y-1)):
             up = self.grid[x][y-1]
         
-        if self.check_position((x+1, y)):
+        if self._check_position((x+1, y)):
             right = self.grid[x+1][y]
         
-        if self.check_position((x-1, y)):
+        if self._check_position((x-1, y)):
             left = self.grid[x-1][y]
         
         a = [up, down, left, right]
         return a
 
-    def check_position(self, pos):
+    def _check_position(self, pos):
         x, y = pos
         return not (x < 0 or y < 0 or x > self.interval-1 or y > self.interval-1)
     
-    def run_game(self, delay, games=None):
+    def run_game(self, time_step, games=None):
 
         screen = pg.display.set_mode((self.x, self.y))
         training_labels = []
 
         game = 0
         k = 10
-
         if games:
             k = games
 
         while game < k:
-
+            
             self._reset_game()
 
             while self.get_game_state():
-
+            
                 screen.fill((0,0,0))
                 self._reset_board()
 
@@ -156,10 +155,8 @@ class SnakeGame:
                 pg.draw.rect(screen, self.BORDER_COLOR, (0, self.y - self.snake_dimensions*2, self.x, self.snake_dimensions*2))
                 pg.draw.rect(screen, self.BORDER_COLOR, (self.x - self.snake_dimensions*2, 0, self.snake_dimensions*2, self.y))
 
-
-                for position in self.P1_POS:
-                    sx = position[0] 
-                    sy = position[1] 
+                for position in self.curr_snake_positions:
+                    sx, sy = position
 
                     # Check If Snake Ate Itself
                     if self.grid[sy][sx] == 1 or sx <= 0 or sy <= 0 or sx >= self.interval-1 or sy >= self.interval-1:
@@ -167,66 +164,73 @@ class SnakeGame:
                         break
                         
                     # Draw Snake
-                    pg.draw.rect(screen, self.P1_COLOR, (sx*self.i, sy*self.i, self.snake_dimensions*2, self.snake_dimensions*2))                    
+                    pg.draw.rect(screen, self.SNAKE_COLOR, (sx*self.i, sy*self.i, self.snake_dimensions*2, self.snake_dimensions*2))                    
                     self.grid[sy][sx] = 1
                 
                 if self.get_game_state:
 
                     # Draw Food
-                    fx = self.food_position[0]
-                    fy = self.food_position[1]            
+                    fx, fy = self.curr_food_position
                     pg.draw.rect(screen, self.FOOD_COLOR, (fx*self.i, fy*self.i, self.snake_dimensions*2, self.snake_dimensions*2))           
                     self.grid[fx][fy] = 2
                 
                     pg.display.update()
                             
                     # Check If Snake Ate Food
-                    if self.P1_POS[0] == self.food_position:
-                        self.food_position = self._get_random_location()    
+                    if self.curr_snake_positions[0] == self.curr_food_position:
+                        self.curr_food_position = self._get_random_location()    
                         self.snake_length += 1
 
                     # Get Keyboard Input
-                    if keyboard.is_pressed('w'):
-                        self.P1_DIR = 0
-                    elif keyboard.is_pressed('a'):
-                        self.P1_DIR = 2
-                    elif keyboard.is_pressed('s'):
-                        self.P1_DIR = 1
-                    elif keyboard.is_pressed('d'):
-                        self.P1_DIR = 3
+                    target_move = [0,0,0,0]
+
+                    if keyboard.is_pressed('w') and (self.curr_snake_dir != 1 or self.snake_length == 1):
+                        self.curr_snake_dir = 0
+                    elif keyboard.is_pressed('a') and (self.curr_snake_dir != 3 or self.snake_length == 1):
+                        self.curr_snake_dir = 2
+                    elif keyboard.is_pressed('s') and (self.curr_snake_dir != 0 or self.snake_length == 1):
+                        self.curr_snake_dir = 1
+                    elif keyboard.is_pressed('d') and (self.curr_snake_dir != 2 or self.snake_length == 1):
+                        self.curr_snake_dir = 3
 
                     if keyboard.is_pressed('/'):
                         quit(0)
+
+                    target_move[self.curr_snake_dir] = 1
+                    training_labels.append((self._get_training_data(self.curr_snake_positions[0]), target_move))
                     
                     # Update Current Position Based on Movement State
                     pos = None
-                    curr_position = self.P1_POS[0]
-                    curr_x = curr_position[0]
-                    curr_y = curr_position[1]
-                    if self.P1_DIR == 0:
+                    curr_position = self.curr_snake_positions[0]
+                    curr_x, curr_y = curr_position
+
+                    if self.curr_snake_dir == 0:
                         curr_y -= 1
-                    elif self.P1_DIR == 1:
+                    elif self.curr_snake_dir == 1:
                         curr_y += 1
-                    elif self.P1_DIR == 2:
+                    elif self.curr_snake_dir == 2:
                         curr_x -= 1
-                    elif self.P1_DIR == 3:
+                    elif self.curr_snake_dir == 3:
                         curr_x += 1
                     pos = (curr_x % (self.interval), curr_y % (self.interval))    
                     
                     # Pop end of snake to maintain size
-                    self.P1_POS.insert(0, pos)
-                    if len(self.P1_POS) > self.snake_length:
-                        self.P1_POS.pop()
+                    self.curr_snake_positions.insert(0, pos)
+                    if len(self.curr_snake_positions) > self.snake_length:
+                        self.curr_snake_positions.pop()
 
-                    time.sleep(delay)
+                    time.sleep(time_step)
             
             print("GAME OVER.", "Score:", self.snake_length) 
             if games:
                 game += 1
 
+        with open('training_data.json', 'w') as outfile:
+            json.dump(training_labels, outfile)
+
 def main():
     snake = SnakeGame(500, 20)
-    snake.run_game(0.08)
+    snake.run_game(0.08, 5)
 
 if __name__ == "__main__":
     main()

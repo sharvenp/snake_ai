@@ -1,13 +1,29 @@
 
+"""
+Snake Model:
+13 input:
+    - 4 adjacent walls
+    - 4 adjacent body parts
+    - 4 food direction
+    - 1 current direction
+
+4 Output:
+    - 3 legal directions
+    - 1 no change in direction
+
+"""
+
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import Dense, Activation
 from keras import losses
 from keras import optimizers
 from keras.datasets import mnist
-import numpy as np
 
-def main():
+import numpy as np
+import json
+
+def main():    
     model = Sequential()
     model.add(Dense(50, input_dim=784, activation='sigmoid'))
     model.add(Dense(50, activation='sigmoid'))
