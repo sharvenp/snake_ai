@@ -1,3 +1,4 @@
+
 import keyboard 
 import pygame as pg
 import time
@@ -6,12 +7,16 @@ import numpy as np
 import math as m
 import json
 
+import keras
+from keras.models import load_model
+
 class SnakeGame:
 
-    def __init__(self, dim, square_interval):
+    def __init__(self, dim, frame_rate, square_interval):
         self.SNAKE_COLOR = (255,255,255)
         self.FOOD_COLOR = (255,100,100)   
         self.BORDER_COLOR = (75,75,75)
+        self.FRAME_RATE = frame_rate
 
         self.x = dim
         self.y = dim
@@ -134,10 +139,12 @@ class SnakeGame:
         x, y = pos
         return not (x < 0 or y < 0 or x > self.interval-1 or y > self.interval-1)
     
-    def run_game(self, time_step, games=None):
+    def run_game(self, games=None, is_human_player=True):
 
         screen = pg.display.set_mode((self.x, self.y))
         
+        model = load_model('trained models/test.h5')
+
         training_x = []
         training_y = []
 
@@ -189,26 +196,44 @@ class SnakeGame:
                         self.curr_food_position = self._get_random_location()    
                         self.snake_length += 1
 
-                    # Get Keyboard Input
-                    target_move = [0,0,0,0]
 
-                    if keyboard.is_pressed('w') and (self.curr_snake_dir != 1 or self.snake_length == 1):
-                        self.curr_snake_dir = 0
-                    elif keyboard.is_pressed('a') and (self.curr_snake_dir != 3 or self.snake_length == 1):
-                        self.curr_snake_dir = 2
-                    elif keyboard.is_pressed('s') and (self.curr_snake_dir != 0 or self.snake_length == 1):
-                        self.curr_snake_dir = 1
-                    elif keyboard.is_pressed('d') and (self.curr_snake_dir != 2 or self.snake_length == 1):
-                        self.curr_snake_dir = 3
+                    if is_human_player: # Use Keyboard if human is playing
+
+                        target_move = [0,0,0,0]
+
+                        # Get Keyboard Input
+                        if keyboard.is_pressed('w') and (self.curr_snake_dir != 1 or self.snake_length == 1):
+                            self.curr_snake_dir = 0
+                        elif keyboard.is_pressed('a') and (self.curr_snake_dir != 3 or self.snake_length == 1):
+                            self.curr_snake_dir = 2
+                        elif keyboard.is_pressed('s') and (self.curr_snake_dir != 0 or self.snake_length == 1):
+                            self.curr_snake_dir = 1
+                        elif keyboard.is_pressed('d') and (self.curr_snake_dir != 2 or self.snake_length == 1):
+                            self.curr_snake_dir = 3
+
+                        data = self._get_training_data(self.curr_snake_positions[0])
+                        target_move[self.curr_snake_dir] = 1
+                        training_x.append(data)
+                        training_y.append(target_move)
+
+                    else: # Use neural net
+
+                        x = np.asarray([self._get_training_data(self.curr_snake_positions[0])])
+                        output = model.predict(x)
+                        ai_dir = np.argmax(output[0])
+
+                        if ai_dir == 0 and (self.curr_snake_dir != 1 or self.snake_length == 1):
+                            self.curr_snake_dir = 0
+                        elif ai_dir == 2 and (self.curr_snake_dir != 3 or self.snake_length == 1):
+                            self.curr_snake_dir = 2
+                        elif ai_dir == 1 and (self.curr_snake_dir != 0 or self.snake_length == 1):
+                            self.curr_snake_dir = 1
+                        elif ai_dir == 3 and (self.curr_snake_dir != 2 or self.snake_length == 1):
+                            self.curr_snake_dir = 3
 
                     if keyboard.is_pressed('/'):
                         quit(0)
 
-                    # px, py = pg.mouse.get_pos()
-                    data = self._get_training_data(self.curr_snake_positions[0])
-                    target_move[self.curr_snake_dir] = 1
-                    training_x.append(data)
-                    training_y.append(target_move)
 
                     # Update Direction Vector Based on Movement State
                     if self.curr_snake_dir == 0:
@@ -230,19 +255,21 @@ class SnakeGame:
                         self.curr_snake_positions.pop()
 
                     # Delay to conrol frame rate
-                    time.sleep(time_step)
-            
+                    time.sleep(1/self.FRAME_RATE)
+
             print("GAME OVER.", "Score:", self.snake_length) 
             if games:
                 game += 1
 
         # Dump sampled data into a dataset
-        with open('training_data.json', 'w') as outfile:
-            json.dump([training_x, training_y], outfile)
+        if is_human_player:
+            with open('training_data.json', 'w') as outfile:
+                json.dump([training_x, training_y], outfile)
+                print("Dumped Sample Data")
 
 def main():
-    snake = SnakeGame(500, 20)
-    snake.run_game(0.08, 5)
+    snake = SnakeGame(500, 15, 20)
+    snake.run_game(is_human_player=False)
 
 if __name__ == "__main__":
     main()
