@@ -33,12 +33,12 @@ def main():
     training_data = None
     with open('training_data.json') as json_file:  
         training_data = json.load(json_file)
-    
+    print("Loaded Dataset", "Size:", len(training_data[0]))
     x_train = np.asarray(training_data[0])
     y_train = np.asarray(training_data[1])
     # print(x_train.shape, y_train.shape)
 
-    model.fit(x=x_train, y=y_train, batch_size=100, epochs=500, verbose=2, shuffle=True)
+    model.fit(x=x_train, y=y_train, batch_size=100, epochs=1000, verbose=2, shuffle=True)
 
     model.save('trained models/test.h5')
 

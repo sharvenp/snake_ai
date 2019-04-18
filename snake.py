@@ -1,14 +1,26 @@
+"""
+Legend:
+0 - Empty Space
+1 - Body Part
+2 - Food
+3 - Wall
 
-import keyboard 
+real_pos - Real coordinate system position
+block_pos - Grid block position
+
+"""
+
 import pygame as pg
 import time
 import random as r
 import numpy as np
+import sys
 import math as m
-import json
 
 import keras
 from keras.models import load_model
+
+np.set_printoptions(threshold=sys.maxsize)
 
 class SnakeGame:
 
@@ -24,6 +36,8 @@ class SnakeGame:
         self.snake_dimensions = square_interval//2
         self.i = square_interval
         self.interval = dim//square_interval
+
+        self.model = load_model('trained models/test.h5')
 
         self._reset_game()
         
@@ -48,7 +62,7 @@ class SnakeGame:
         return r.choice(availabe)
 
     def _reset_board(self):
-
+        
         self.grid = []
         
         # Reset grid and draw border on grid
@@ -66,7 +80,7 @@ class SnakeGame:
         # Reset the game and init params
         self._reset_board()
         self.game_over = False
-        self.snake_length = 1
+        self.snake_length = 2
         self.curr_snake_positions = [(self.interval//2, self.interval//2)]
         self.curr_food_position = self._get_random_location()
         self.curr_snake_dir = r.randint(0, 3)
@@ -89,64 +103,81 @@ class SnakeGame:
                         a = True
             return int(a) + 1
 
-    def _get_training_data(self, pos):
-
+    def _check_legal(self, pos):
         x, y = pos
+        mx, my = self._convert_real_pos_to_block((self.x, self.y))
+
+        return (x >= 0 and y >= 0 and x <= mx - 1 and y <= mx - 1)
+
+    def _get_squares_in_direction(self, pos, direction):
+        curr_pos = (pos[0] + direction[0], pos[1] + direction[1])
+        a = []
+        while self._check_legal(curr_pos):
+            a.append(curr_pos)
+            curr_pos = (curr_pos[0] + direction[0], curr_pos[1] + direction[1])
+        
+        return a
+
+    def _get_vision_data(self):
+
+        x, y = self.curr_snake_positions[0]
         fx, fy = self.curr_food_position
-        output = [0,0,0,0,0,0,0,0,0]
-        adjacent_data = self._get_adjacent_data(pos)
+        
+        max_distance = self._get_distance((1,1), self._convert_real_pos_to_block((self.x, self.y)))
 
-        # Get Adjacent Wall
-        output[0] = float(adjacent_data[0] == 3)
-        output[1] = float(adjacent_data[1] == 3)
-        output[2] = float(adjacent_data[2] == 3)
-        output[3] = float(adjacent_data[3] == 3)
+        vision_data = []
+        extracted_data = []       
 
-        # Get Adjacent Body
-        output[4] = float(adjacent_data[0] == 1)
-        output[5] = float(adjacent_data[1] == 1)
-        output[6] = float(adjacent_data[2] == 1)
-        output[7] = float(adjacent_data[3] == 1)
+        # Get squares by traversing in all 8 directions
+        extracted_data.append(self._get_squares_in_direction((x,y), ( 0, -1))) # Left
+        extracted_data.append(self._get_squares_in_direction((x,y), (-1, -1))) # TL
+        extracted_data.append(self._get_squares_in_direction((x,y), (-1,  0))) # Up
+        extracted_data.append(self._get_squares_in_direction((x,y), (-1,  1))) # TR
+        extracted_data.append(self._get_squares_in_direction((x,y), ( 0,  1))) # Right
+        extracted_data.append(self._get_squares_in_direction((x,y), ( 1,  1))) # BR
+        extracted_data.append(self._get_squares_in_direction((x,y), ( 1,  0))) # Down
+        extracted_data.append(self._get_squares_in_direction((x,y), ( 1, -1))) # BL
+
+        # Wall Distance
+        for data in extracted_data:
+            vision_data.append(self._get_distance((x, y), data[-1])/max_distance)
+
+        # Food Distance
+        for data in extracted_data:
+            d = 0
+            for p in data:
+                px, py = p
+                val = self.grid[px][py]
+                if val == 2:
+                    d = self._get_distance((x, y), p)/max_distance
+                    break
+            vision_data.append(d)
+
+        # Body Part Distance
+        for data in extracted_data:
+            d = 0
+            for p in data:
+                px, py = p
+                val = self.grid[px][py]
+                if val == 1:
+                    d = self._get_distance((x, y), p)/max_distance
+                    break
+            vision_data.append(d)
 
         # Get Food Direction
         theta = m.atan2(fy - y, fx - x)
-        output[8] = (theta/(2*m.pi)) + (1/2)
+        vision_data.append((theta/(2*m.pi)) + (1/2)) 
 
-        return output
-
-    def _get_adjacent_data(self, pos):
-       
-        y, x = pos
-
-        down, up, right, left = None, None, None, None
-
-        if self._check_position((x, y+1)):
-            down = self.grid[x][y+1]
-        
-        if self._check_position((x, y-1)):
-            up = self.grid[x][y-1]
-        
-        if self._check_position((x+1, y)):
-            right = self.grid[x+1][y]
-        
-        if self._check_position((x-1, y)):
-            left = self.grid[x-1][y]
-        
-        a = [up, down, left, right]
-        return a
-
-    def _check_position(self, pos):
-        x, y = pos
-        return not (x < 0 or y < 0 or x > self.interval-1 or y > self.interval-1)
+        return vision_data
     
+    def _get_distance(self, p1, p2):
+        x1, y1 = p1
+        x2, y2 = p2
+        return m.sqrt(((x2-x1)**2) + ((y2-y1)**2))
+
     def run_game(self, games=None, is_human_player=True):
 
         screen = pg.display.set_mode((self.x, self.y))
-        
-        model = load_model('trained models/test.h5')
-
-        training_x = []
-        training_y = []
 
         game = 0
         k = 10
@@ -193,33 +224,37 @@ class SnakeGame:
                             
                     # Check If Snake Ate Food
                     if self.curr_snake_positions[0] == self.curr_food_position:
+                        fx, fy = self.curr_food_position
                         self.curr_food_position = self._get_random_location()    
                         self.snake_length += 1
 
+                    e = pg.event.poll()
+                    if e.type == pg.QUIT:
+                        return
+
+                    keys = pg.key.get_pressed()
+                    
+                    if keys[pg.K_ESCAPE] or keys[pg.K_SLASH]:
+                        return
 
                     if is_human_player: # Use Keyboard if human is playing
 
-                        target_move = [0,0,0,0]
-
                         # Get Keyboard Input
-                        if keyboard.is_pressed('w') and (self.curr_snake_dir != 1 or self.snake_length == 1):
+                        if keys[pg.K_w] and self.curr_snake_dir != 1:
                             self.curr_snake_dir = 0
-                        elif keyboard.is_pressed('a') and (self.curr_snake_dir != 3 or self.snake_length == 1):
+                        elif keys[pg.K_a] and self.curr_snake_dir != 3:
                             self.curr_snake_dir = 2
-                        elif keyboard.is_pressed('s') and (self.curr_snake_dir != 0 or self.snake_length == 1):
+                        elif keys[pg.K_s] and self.curr_snake_dir != 0:
                             self.curr_snake_dir = 1
-                        elif keyboard.is_pressed('d') and (self.curr_snake_dir != 2 or self.snake_length == 1):
+                        elif keys[pg.K_d] and self.curr_snake_dir != 2:
                             self.curr_snake_dir = 3
-
-                        data = self._get_training_data(self.curr_snake_positions[0])
-                        target_move[self.curr_snake_dir] = 1
-                        training_x.append(data)
-                        training_y.append(target_move)
 
                     else: # Use neural net
 
+                        vision_data = self._get_vision_data()
+
                         x = np.asarray([self._get_training_data(self.curr_snake_positions[0])])
-                        output = model.predict(x)
+                        output = self.model.predict(x)
                         ai_dir = np.argmax(output[0])
 
                         if ai_dir == 0 and (self.curr_snake_dir != 1 or self.snake_length == 1):
@@ -230,10 +265,6 @@ class SnakeGame:
                             self.curr_snake_dir = 1
                         elif ai_dir == 3 and (self.curr_snake_dir != 2 or self.snake_length == 1):
                             self.curr_snake_dir = 3
-
-                    if keyboard.is_pressed('/'):
-                        quit(0)
-
 
                     # Update Direction Vector Based on Movement State
                     if self.curr_snake_dir == 0:
@@ -252,7 +283,8 @@ class SnakeGame:
                     # Pop end of snake to maintain size
                     self.curr_snake_positions.insert(0, pos)
                     if len(self.curr_snake_positions) > self.snake_length:
-                        self.curr_snake_positions.pop()
+                        last_pos = self.curr_snake_positions.pop()
+                        r, c = last_pos
 
                     # Delay to conrol frame rate
                     time.sleep(1/self.FRAME_RATE)
@@ -260,16 +292,11 @@ class SnakeGame:
             print("GAME OVER.", "Score:", self.snake_length) 
             if games:
                 game += 1
-
-        # Dump sampled data into a dataset
-        if is_human_player:
-            with open('training_data.json', 'w') as outfile:
-                json.dump([training_x, training_y], outfile)
-                print("Dumped Sample Data")
+    
 
 def main():
     snake = SnakeGame(500, 15, 20)
-    snake.run_game(is_human_player=False)
+    snake.run_game(games=None, is_human_player=False)
 
 if __name__ == "__main__":
     main()
