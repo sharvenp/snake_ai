@@ -27,14 +27,15 @@ from keras import optimizers
 from keras import backend as keras_back
 from keras import utils as np_utils
 
-
 # Misc Stuff
 np.set_printoptions(threshold=sys.maxsize)
+
+# Global Params
 save_interval = 50
 food_reward = 500
 death_reward = -200
 idle_reward = -0.75
-gamma = 0.75
+gamma = 0.3
 
 class SnakeGame:
 
@@ -50,10 +51,8 @@ class SnakeGame:
         self.snake_dimensions = square_interval//2
         self.i = square_interval
         self.interval = dim//square_interval
-
-        self._create_model([25, 15, 15, 4])
-        for filename in os.listdir('trained models/'):
-            
+        
+        self._create_model([25, 15, 15, 4], loaded=False)
         self._create_training_function()
 
         self._reset_game()
@@ -74,7 +73,7 @@ class SnakeGame:
         # Get a list of all possible locations that are not occupied or on an edge
         for row in range(self.interval):
             for col in range(self.interval):
-                if self.grid[row][col] == 0 and (1 < row < self.interval - 2) and (1 < col < self.interval - 2):
+                if self.grid[row][col] == 0 and (0 < row < self.interval - 1) and (0 < col < self.interval - 1):
                     availabe.append((col, row))
         return r.choice(availabe)
 
@@ -199,22 +198,16 @@ class SnakeGame:
         x2, y2 = p2
         return m.sqrt(((x2-x1)**2) + ((y2-y1)**2))
 
-    def run_game(self, frame_rate, games, is_human_player=True, draw_snake_vision=False):
+    def run_game(self, frame_rate, draw_snake_vision=False):
 
         screen = pg.display.set_mode((self.x, self.y))
 
         game = 0
 
-        states = None
-        actions = None
-        rewards = None
-
-        if not is_human_player:
-            states, actions, rewards = [], [], []
-
+        states, actions, rewards = [], [], []
         learning_interval = 100
 
-        while game < games:
+        while True:
             
             self._reset_game()
 
@@ -235,8 +228,7 @@ class SnakeGame:
                     # Check If Snake Ate Itself
                     if self.grid[sy][sx] == 1 or sx <= 0 or sy <= 0 or sx >= self.interval-1 or sy >= self.interval-1:
                         self.game_over = True
-                        if not is_human_player:
-                            rewards.append(death_reward)
+                        rewards.append(death_reward)
                         break
                         
                     # Draw Snake
@@ -257,9 +249,8 @@ class SnakeGame:
                         fx, fy = self.curr_food_position
                         self.curr_food_position = self._get_random_location()    
                         self.snake_length += 1
-                        
-                        if not is_human_player:
-                            rewards.append(food_reward)
+                        rewards.append(food_reward)
+                    
                     else:
                         rewards.append(idle_reward)
 
@@ -272,48 +263,32 @@ class SnakeGame:
                     if keys[pg.K_ESCAPE] or keys[pg.K_SLASH]:
                         return
 
-                    if not is_human_player and len(states) % learning_interval == 0 and states:
-                        
+                    if len(states) % learning_interval == 0 and states: 
                         self._train_episode(states, actions, rewards, game)
                         states, actions, rewards = [], [], []
 
+                    vision_data, extracted_data = self._get_vision_data()
+                    
+                    if draw_snake_vision:
+                        for data in extracted_data:
+                            if data:
+                                px, py = self._convert_block_pos_to_real(data[-1])
+                                cx, cy = self._convert_block_pos_to_real(self.curr_snake_positions[0])
+                                pg.draw.line(screen, self.SNAKE_VISION_COLOR, 
+                                            (cx+self.snake_dimensions, cy+self.snake_dimensions),
+                                            (px+self.snake_dimensions, py+self.snake_dimensions))   
+                    states.append(vision_data)
+                    action = self._get_state_action(vision_data)
+                    actions.append(action)
 
-                    if is_human_player: # Use Keyboard if human is playing
-
-                        # Get Keyboard Input
-                        if keys[pg.K_w] and self.curr_snake_dir != 1:
-                            self.curr_snake_dir = 0
-                        elif keys[pg.K_a] and self.curr_snake_dir != 3:
-                            self.curr_snake_dir = 2
-                        elif keys[pg.K_s] and self.curr_snake_dir != 0:
-                            self.curr_snake_dir = 1
-                        elif keys[pg.K_d] and self.curr_snake_dir != 2:
-                            self.curr_snake_dir = 3
-
-                    else: # Use neural net
-
-                        vision_data, extracted_data = self._get_vision_data()
-                        
-                        if draw_snake_vision:
-                            for data in extracted_data:
-                                if data:
-                                    px, py = self._convert_block_pos_to_real(data[-1])
-                                    cx, cy = self._convert_block_pos_to_real(self.curr_snake_positions[0])
-                                    pg.draw.line(screen, self.SNAKE_VISION_COLOR, 
-                                                (cx+self.snake_dimensions, cy+self.snake_dimensions),
-                                                (px+self.snake_dimensions, py+self.snake_dimensions))   
-                        states.append(vision_data)
-                        action = self._get_state_action(vision_data)
-                        actions.append(action)
-
-                        if action == 0 and (self.curr_snake_dir != 1 or self.snake_length == 1):
-                            self.curr_snake_dir = 0
-                        elif action == 2 and (self.curr_snake_dir != 3 or self.snake_length == 1):
-                            self.curr_snake_dir = 2
-                        elif action == 1 and (self.curr_snake_dir != 0 or self.snake_length == 1):
-                            self.curr_snake_dir = 1
-                        elif action == 3 and (self.curr_snake_dir != 2 or self.snake_length == 1):
-                            self.curr_snake_dir = 3
+                    if action == 0 and (self.curr_snake_dir != 1 or self.snake_length == 1):
+                        self.curr_snake_dir = 0
+                    elif action == 2 and (self.curr_snake_dir != 3 or self.snake_length == 1):
+                        self.curr_snake_dir = 2
+                    elif action == 1 and (self.curr_snake_dir != 0 or self.snake_length == 1):
+                        self.curr_snake_dir = 1
+                    elif action == 3 and (self.curr_snake_dir != 2 or self.snake_length == 1):
+                        self.curr_snake_dir = 3
 
                     # Update Direction Vector Based on Movement State
                     if self.curr_snake_dir == 0:
@@ -345,27 +320,36 @@ class SnakeGame:
             print(f"EPISODE {game} OVER.", "Score:", self.snake_length - 2, "TOTAL REWARD:", sum(rewards))
             game += 1
 
-            if not is_human_player and states:
-                self._train_episode(states, actions, rewards, game)
-                states, actions, rewards = [], [], []
-
+            self._train_episode(states, actions, rewards, game)
+            states, actions, rewards = [], [], []
     
     
     # ---------- AI Methods ---------- #
-    def _create_model(self, architecture):
+    def _create_model(self, architecture, loaded=False):
 
         self.input_dim = architecture[0]
         self.output_dim = architecture[-1]
-        self.input = layers.Input(shape=(self.input_dim,))
-        net = self.input
-        
-        for h_dim in architecture[1:len(architecture)-1]:
-            net = layers.Dense(h_dim)(net)
-            net = layers.Activation("relu")(net)
 
-        net = layers.Dense(self.output_dim)(net)
-        net = layers.Activation("softmax")(net)
-        self.model = Model(inputs=self.input, outputs=net)
+        if not loaded:
+            self.input = layers.Input(shape=(self.input_dim,))
+            net = self.input
+            
+            for h_dim in architecture[1:len(architecture)-1]:
+                net = layers.Dense(h_dim)(net)
+                net = layers.Activation("relu")(net)
+
+            net = layers.Dense(self.output_dim)(net)
+            net = layers.Activation("softmax")(net)
+            self.model = Model(inputs=self.input, outputs=net)
+        
+        else:
+            m = -1
+            for filename in os.listdir('trained models/'):
+                a = filename.replace('episode-', '')
+                a = int(a.replace('-snake.h5',''))
+                if a > m:
+                    m = a
+            self._load_model('trained models/episode-'+str(m)+'-snake.h5')
 
     def _load_model(self, directory):
         self.model = load_model(directory)
@@ -448,7 +432,7 @@ class SnakeGame:
 
 def main():
     snake = SnakeGame(500, 20)
-    snake.run_game(90, 1000000, is_human_player=False, draw_snake_vision=False)
+    snake.run_game(90)
 
 if __name__ == "__main__":
     main()

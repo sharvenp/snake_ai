@@ -36,7 +36,7 @@ class SnakeGame:
         # Get a list of all possible locations that are not occupied or on an edge
         for row in range(self.interval):
             for col in range(self.interval):
-                if self.grid[row][col] == 0 and (1 < row < self.interval - 2) and (1 < col < self.interval - 2):
+                if self.grid[row][col] == 0 and (0 < row < self.interval - 1) and (0 < col < self.interval - 1):
                     availabe.append((col, row))
         return r.choice(availabe)
 
