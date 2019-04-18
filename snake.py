@@ -19,16 +19,21 @@ import math as m
 
 import keras
 from keras.models import load_model
+from keras.models import Sequential
+from keras.layers import Dense, Activation
+from keras import losses
+from keras import optimizers
 
+# Misc Stuff
 np.set_printoptions(threshold=sys.maxsize)
 
 class SnakeGame:
 
-    def __init__(self, dim, frame_rate, square_interval):
+    def __init__(self, dim, square_interval):
         self.SNAKE_COLOR = (255,255,255)
+        self.SNAKE_VISION_COLOR = (100,100,100)
         self.FOOD_COLOR = (255,100,100)   
         self.BORDER_COLOR = (75,75,75)
-        self.FRAME_RATE = frame_rate
 
         self.x = dim
         self.y = dim
@@ -37,10 +42,28 @@ class SnakeGame:
         self.i = square_interval
         self.interval = dim//square_interval
 
-        self.model = load_model('trained models/test.h5')
+        self.create_model('trained models/test.h5', loaded=True)
 
         self._reset_game()
-        
+
+    def create_model(self, directory, loaded=False):
+
+        if not loaded:
+            self.model = Sequential()
+            self.model.add(Dense(15, input_shape=(25,), activation='relu'))
+            self.model.add(Dense(15, activation='relu'))
+            self.model.add(Dense(4, activation='sigmoid'))
+            self.model.summary()
+            self.model.compile(loss=losses.mean_squared_error,
+                    optimizer=optimizers.SGD(lr=0.1, decay=1e-6, momentum=0.9, nesterov=True),
+                    metrics=['accuracy'])
+
+            self.model.save(directory)
+            print("Created Model. Saved to:", directory)
+        else:
+            self.model = load_model(directory)
+            print("Loaded Model From:", directory)
+
     def _convert_real_pos_to_block(self, pos):
         # Converts a coordinate on the screen to an interval coordinate
         x, y = pos
@@ -106,8 +129,7 @@ class SnakeGame:
     def _check_legal(self, pos):
         x, y = pos
         mx, my = self._convert_real_pos_to_block((self.x, self.y))
-
-        return (x >= 0 and y >= 0 and x <= mx - 1 and y <= mx - 1)
+        return (x >= 0 and y >= 0 and x <= mx - 1 and y < mx - 1)
 
     def _get_squares_in_direction(self, pos, direction):
         curr_pos = (pos[0] + direction[0], pos[1] + direction[1])
@@ -115,7 +137,6 @@ class SnakeGame:
         while self._check_legal(curr_pos):
             a.append(curr_pos)
             curr_pos = (curr_pos[0] + direction[0], curr_pos[1] + direction[1])
-        
         return a
 
     def _get_vision_data(self):
@@ -140,42 +161,51 @@ class SnakeGame:
 
         # Wall Distance
         for data in extracted_data:
-            vision_data.append(self._get_distance((x, y), data[-1])/max_distance)
+            if data:
+                vision_data.append(self._get_distance((x, y), data[-1])/max_distance)
+            else:
+                vision_data.append(0)
 
         # Food Distance
         for data in extracted_data:
-            d = 0
-            for p in data:
-                px, py = p
-                val = self.grid[px][py]
-                if val == 2:
-                    d = self._get_distance((x, y), p)/max_distance
-                    break
-            vision_data.append(d)
+            if data:
+                d = 0
+                for p in data:
+                    px, py = p
+                    val = self.grid[px][py]
+                    if val == 2:
+                        d = self._get_distance((x, y), p)/max_distance
+                        break
+                vision_data.append(d)
+            else:
+                vision_data.append(0)
 
         # Body Part Distance
         for data in extracted_data:
-            d = 0
-            for p in data:
-                px, py = p
-                val = self.grid[px][py]
-                if val == 1:
-                    d = self._get_distance((x, y), p)/max_distance
-                    break
-            vision_data.append(d)
+            if data:
+                d = 0
+                for p in data:
+                    px, py = p
+                    val = self.grid[px][py]
+                    if val == 1:
+                        d = self._get_distance((x, y), p)/max_distance
+                        break
+                vision_data.append(d)
+            else:
+                vision_data.append(0)
 
         # Get Food Direction
         theta = m.atan2(fy - y, fx - x)
         vision_data.append((theta/(2*m.pi)) + (1/2)) 
 
-        return vision_data
+        return np.asarray(vision_data), extracted_data
     
     def _get_distance(self, p1, p2):
         x1, y1 = p1
         x2, y2 = p2
         return m.sqrt(((x2-x1)**2) + ((y2-y1)**2))
 
-    def run_game(self, games=None, is_human_player=True):
+    def run_game(self, frame_rate, games=None, is_human_player=True, draw_snake_vision=False):
 
         screen = pg.display.set_mode((self.x, self.y))
 
@@ -219,9 +249,7 @@ class SnakeGame:
                     rfx, rfy = self._convert_block_pos_to_real(self.curr_food_position)
                     pg.draw.rect(screen, self.FOOD_COLOR, (rfx, rfy, self.snake_dimensions*2, self.snake_dimensions*2))           
                     self.grid[fy][fx] = 2
-                
-                    pg.display.update()
-                            
+                                            
                     # Check If Snake Ate Food
                     if self.curr_snake_positions[0] == self.curr_food_position:
                         fx, fy = self.curr_food_position
@@ -251,9 +279,18 @@ class SnakeGame:
 
                     else: # Use neural net
 
-                        vision_data = self._get_vision_data()
+                        vision_data, extracted_data = self._get_vision_data()
+                        
+                        if draw_snake_vision:
+                            for data in extracted_data:
+                                if data:
+                                    px, py = self._convert_block_pos_to_real(data[-1])
+                                    cx, cy = self._convert_block_pos_to_real(self.curr_snake_positions[0])
+                                    pg.draw.line(screen, self.SNAKE_VISION_COLOR, 
+                                                (cx+self.snake_dimensions, cy+self.snake_dimensions),
+                                                (px+self.snake_dimensions, py+self.snake_dimensions))   
 
-                        x = np.asarray([self._get_training_data(self.curr_snake_positions[0])])
+                        x = np.asarray([vision_data])
                         output = self.model.predict(x)
                         ai_dir = np.argmax(output[0])
 
@@ -283,20 +320,21 @@ class SnakeGame:
                     # Pop end of snake to maintain size
                     self.curr_snake_positions.insert(0, pos)
                     if len(self.curr_snake_positions) > self.snake_length:
-                        last_pos = self.curr_snake_positions.pop()
-                        r, c = last_pos
+                        self.curr_snake_positions.pop()
+
+                    pg.display.update()
 
                     # Delay to conrol frame rate
-                    time.sleep(1/self.FRAME_RATE)
+                    time.sleep(1/frame_rate)
 
-            print("GAME OVER.", "Score:", self.snake_length) 
+            print("GAME OVER.", "Score:", self.snake_length - 2) 
             if games:
                 game += 1
     
 
 def main():
-    snake = SnakeGame(500, 15, 20)
-    snake.run_game(games=None, is_human_player=False)
+    snake = SnakeGame(500, 20)
+    snake.run_game(15, games=None, is_human_player=False, draw_snake_vision=True)
 
 if __name__ == "__main__":
     main()
