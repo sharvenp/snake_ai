@@ -1,14 +1,3 @@
-"""
-Legend:
-0 - Empty Space
-1 - Body Part
-2 - Food
-3 - Wall
-
-real_pos - Real coordinate system position
-block_pos - Grid block position
-
-"""
 
 import pygame as pg
 import time
@@ -30,26 +19,29 @@ from keras import optimizers
 from keras import backend as keras_back
 from keras import utils as np_utils
 
-# Global Params
-learning_interval = 100
-save_interval = 50
+class AI_Training_Simulation:
 
-food_reward = 500
-death_reward = -100
-idle_reward = -10
-
-gamma = 0.95
-learning_rate = 0.005
-
-current_episode = 0
-
-class SnakeGame:
-
-    def __init__(self, dim, square_interval):
+    def __init__(self, dim, square_interval, load_from_file=False):
+        
+        # Constant Params
+        # Snake Game
         self.SNAKE_COLOR = (255,255,255)
-        self.SNAKE_VISION_COLOR = (100,100,100)
-        self.FOOD_COLOR = (255,100,100)   
+        self.SNAKE_VISION_COLOR = (255,0,255)
+        self.FOOD_COLOR = (255,255,100)   
         self.BORDER_COLOR = (75,75,75)
+        self.BACKGROUND_COLOR = (0,0,0)
+
+        # Neural Net
+        self.LEARNING_RATE = 0.005
+        self.GAMMA = 0.95
+        self.SAVE_INTERVAL = 50
+
+        # Rewards
+        self.FOOD_REWARD = 300
+        self.DEATH_REWARD = -150
+        self.IDLE_REWARD = -5
+
+        self.current_episode = 0
 
         self.x = dim
         self.y = dim
@@ -58,7 +50,7 @@ class SnakeGame:
         self.i = square_interval
         self.interval = dim//square_interval
         
-        self._create_model([25, 18, 4], loaded=True)
+        self._create_model([25, 18, 4], loaded=load_from_file)
         self._create_training_function()
 
         self._reset_game()
@@ -107,7 +99,7 @@ class SnakeGame:
         self.curr_food_position = self._get_random_location()
         self.curr_snake_dir = r.randint(0, 3)
 
-    def get_game_state(self):
+    def _get_game_state(self):
     
         """
         0 - Game is over
@@ -131,6 +123,8 @@ class SnakeGame:
         return (x >= 0 and y >= 0 and x <= mx - 1 and y <= mx - 1)
 
     def _get_squares_in_direction(self, pos, direction):
+
+        # Get all valid squares in a specific direction
         curr_pos = (pos[0] + direction[0], pos[1] + direction[1])
         a = []
         while self._check_legal(curr_pos):
@@ -140,6 +134,7 @@ class SnakeGame:
 
     def _get_vision_data(self):
 
+        # Get the snake vision data for input in the NNs
         x, y = self.curr_snake_positions[0]
         fx, fy = self.curr_food_position
         
@@ -200,15 +195,18 @@ class SnakeGame:
         return np.asarray(vision_data), extracted_data
     
     def _get_distance(self, p1, p2):
+        # Get distance between the two points p1 and p2
         x1, y1 = p1
         x2, y2 = p2
         return m.sqrt(((x2-x1)**2) + ((y2-y1)**2))
 
-    def run_game(self, frame_rate, draw_snake_vision=False):
+    def run(self, frame_rate, draw_snake_vision=False):
 
+        # Run the snake simulation
         screen = pg.display.set_mode((self.x, self.y))
+        pg.display.set_caption("BoAI")
 
-        game = current_episode
+        game = self.current_episode
 
         start_time = time.time()
 
@@ -217,9 +215,9 @@ class SnakeGame:
             self._reset_game()
             states, actions, rewards = [], [], []
 
-            while self.get_game_state():
+            while self._get_game_state():
 
-                screen.fill((0,0,0))
+                screen.fill(self.BACKGROUND_COLOR)
                 self._reset_board()
 
                 # Draw Border
@@ -234,7 +232,7 @@ class SnakeGame:
                     # Check If Snake Ate Itself
                     if self.grid[sy][sx] == 1 or sx <= 0 or sy <= 0 or sx >= self.interval-1 or sy >= self.interval-1:
                         self.game_over = True
-                        rewards.append(death_reward)
+                        rewards.append(self.DEATH_REWARD)
                         break
                         
                     # Draw Snake
@@ -242,7 +240,7 @@ class SnakeGame:
                     pg.draw.rect(screen, self.SNAKE_COLOR, (rx, ry, self.snake_dimensions*2, self.snake_dimensions*2))                    
                     self.grid[sy][sx] = 1
 
-                if self.get_game_state:
+                if self._get_game_state():
 
                     # Draw Food
                     fx, fy = self.curr_food_position
@@ -255,10 +253,10 @@ class SnakeGame:
                         fx, fy = self.curr_food_position
                         self.curr_food_position = self._get_random_location()    
                         self.snake_length += 1
-                        rewards.append(food_reward)
+                        rewards.append(self.FOOD_REWARD)
                     
                     else:
-                        rewards.append(idle_reward)
+                        rewards.append(self.IDLE_REWARD)
 
                     e = pg.event.poll()
                     if e.type == pg.QUIT:
@@ -268,10 +266,6 @@ class SnakeGame:
                     
                     if keys[pg.K_ESCAPE] or keys[pg.K_SLASH]:
                         return
-
-                    # if len(states) % learning_interval == 0 and states: 
-                    #     self._train_episode(states, actions, rewards, game)
-                    #     states, actions, rewards = [], [], []
 
                     vision_data, extracted_data = self._get_vision_data()
                     
@@ -325,15 +319,20 @@ class SnakeGame:
             
             if len(rewards) > len(states) and rewards:
                 rewards.pop()    
-            print(f"EPISODE {game} OVER.", "SCORE:", self.snake_length - 2, "REWARD:", sum(rewards), "TIME:", time_str)
+            output_string = "Episode {:0>6}: Score: {:0>2} Reward: {:0>5} Time: {}".format(game, self.snake_length-2, sum(rewards), time_str)
+            print(output_string)
             game += 1
 
             self._train_episode(states, actions, rewards, game)
             states, actions, rewards = [], [], []
 
-    # ---------- AI Methods ---------- #
+####################################################################################################################
+# -------------------------------------------------- AI Methods -------------------------------------------------- #
+####################################################################################################################
+
     def _create_model(self, architecture, loaded=False):
 
+        # Create agent model or load the last checkpoint
         self.input_dim = architecture[0]
         self.output_dim = architecture[-1]
 
@@ -361,8 +360,7 @@ class SnakeGame:
                     chkpoint = int(k)
                     if chkpoint > m:
                         m = chkpoint
-                global current_episode 
-                current_episode = m
+                self.current_episode = m
                 self._load_model('trained models/'+prefix+str(m)+suffix)
             else:
                 print(colored('FATAL: DIRECTORY EMPTY', 'red')) 
@@ -370,15 +368,18 @@ class SnakeGame:
                 
 
     def _load_model(self, directory):
+        # Load a keras agent
         self.model = load_model(directory)
         print(colored('Loaded Model From: ' + directory, 'magenta')) 
 
     def _save_model(self, directory):
+        # Save the agent
         self.model.save(directory)
         print(colored('Saved Model To: ' + directory, 'green')) 
 
     def _create_training_function(self):
         
+        # Create a Reinforcement Learning training function
         action_prob_placeholder = self.model.output 
         action_onehot_placeholder = keras_back.placeholder(shape=(None, self.output_dim), name="action_onehot")
         discount_reward_placeholder = keras_back.placeholder(shape=(None,), name="discount_reward")
@@ -389,7 +390,7 @@ class SnakeGame:
         loss = -1*log_action_prob * discount_reward_placeholder
         loss = keras_back.mean(loss)
 
-        adam = optimizers.Adam(lr=learning_rate)
+        adam = optimizers.Adam(lr=self.LEARNING_RATE)
 
         updates = adam.get_updates(params=self.model.trainable_weights,
                                    loss=loss)
@@ -399,43 +400,50 @@ class SnakeGame:
                                                      updates=updates)
 
     def _get_state_action(self, state_input):
+
+        # Get agent action from a given state
         action_prob = np.squeeze(self.model.predict(np.asarray([state_input])))
-        # action_prob = self.model.predict(np.asarray([state_input]))[0]
         val = np.random.choice(np.arange(self.output_dim), p=action_prob)
-        # print(action_prob)
-        # val = np.argmax(action_prob)
+        # val = np.argmax(action_prob) # Greedy action
         return val
     
     def _train (self, S, A, R):
+
+        # Train the agent with given states <S>, actions <A> and rewards <R>
         action_onehot = np_utils.to_categorical(A, num_classes=self.output_dim)
-        discount_reward = self._compute_discounted_rewards(R, discount_rate=gamma)
+        discount_reward = self._compute_discounted_rewards(R)
         self.training_function([S, action_onehot, discount_reward])
 
     def _train_episode(self, s, a, r, game):
+
+        # Wrapper for _train that also saves
         if s and a and r:
-            while len(r) > len(s):
+            # Theres a bug where len(r) > len(s) so quick kludge around it
+            while len(r) > len(s): 
                 r.pop()    
             directory = 'trained models/'
             states = np.asarray(s)
             actions = np.asarray(a)
             rewards = np.asarray(r)
             self._train(states, actions, rewards)
-            if game % save_interval == 0 and game:
+            if game % self.SAVE_INTERVAL == 0 and game:
                 self._save_model(directory+"episode-"+str(game)+"-snake.h5")
 
-    def _compute_discounted_rewards (self, R, discount_rate=.99):
+    def _compute_discounted_rewards (self, R):
+
+        # Computes discounted rewards based on R and GAMMA
         discounted_r = np.zeros_like(R, dtype=np.float32)
         running_add = 0
         for t in reversed(range(len(R))):
-            running_add = running_add * discount_rate + R[t]
+            running_add = running_add * self.GAMMA + R[t]
             discounted_r[t] = running_add
         discounted_r -= (discounted_r.mean() / discounted_r.std())
         return discounted_r
 
 def main():
-    colorama.init()
-    snake = SnakeGame(500, 20)
-    snake.run_game(60)
+    colorama.init() # This enables colored print statements
+    s = AI_Training_Simulation(500, 20, load_from_file=True)
+    s.run(75)
 
 if __name__ == "__main__":
     main()
