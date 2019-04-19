@@ -18,6 +18,9 @@ import sys
 import os
 import math as m
 
+import colorama  
+from termcolor import colored 
+
 import keras
 from keras.models import load_model
 from keras.models import Model
@@ -27,15 +30,18 @@ from keras import optimizers
 from keras import backend as keras_back
 from keras import utils as np_utils
 
-# Misc Stuff
-np.set_printoptions(threshold=sys.maxsize)
-
 # Global Params
+learning_interval = 100
 save_interval = 50
+
 food_reward = 500
-death_reward = -200
-idle_reward = -0.75
-gamma = 0.3
+death_reward = -100
+idle_reward = -10
+
+gamma = 0.95
+learning_rate = 0.005
+
+current_episode = 0
 
 class SnakeGame:
 
@@ -52,7 +58,7 @@ class SnakeGame:
         self.i = square_interval
         self.interval = dim//square_interval
         
-        self._create_model([25, 15, 15, 4], loaded=False)
+        self._create_model([25, 18, 4], loaded=True)
         self._create_training_function()
 
         self._reset_game()
@@ -202,14 +208,14 @@ class SnakeGame:
 
         screen = pg.display.set_mode((self.x, self.y))
 
-        game = 0
+        game = current_episode
 
-        states, actions, rewards = [], [], []
-        learning_interval = 100
+        start_time = time.time()
 
         while True:
             
             self._reset_game()
+            states, actions, rewards = [], [], []
 
             while self.get_game_state():
 
@@ -263,9 +269,9 @@ class SnakeGame:
                     if keys[pg.K_ESCAPE] or keys[pg.K_SLASH]:
                         return
 
-                    if len(states) % learning_interval == 0 and states: 
-                        self._train_episode(states, actions, rewards, game)
-                        states, actions, rewards = [], [], []
+                    # if len(states) % learning_interval == 0 and states: 
+                    #     self._train_episode(states, actions, rewards, game)
+                    #     states, actions, rewards = [], [], []
 
                     vision_data, extracted_data = self._get_vision_data()
                     
@@ -314,16 +320,17 @@ class SnakeGame:
                     # Delay to conrol frame rate
                     time.sleep(1/frame_rate)
 
-
-            if len(rewards) != len(states) and rewards:
+            elapsed_time = time.time() - start_time
+            time_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
+            
+            if len(rewards) > len(states) and rewards:
                 rewards.pop()    
-            print(f"EPISODE {game} OVER.", "Score:", self.snake_length - 2, "TOTAL REWARD:", sum(rewards))
+            print(f"EPISODE {game} OVER.", "SCORE:", self.snake_length - 2, "REWARD:", sum(rewards), "TIME:", time_str)
             game += 1
 
             self._train_episode(states, actions, rewards, game)
             states, actions, rewards = [], [], []
-    
-    
+
     # ---------- AI Methods ---------- #
     def _create_model(self, architecture, loaded=False):
 
@@ -343,27 +350,36 @@ class SnakeGame:
             self.model = Model(inputs=self.input, outputs=net)
         
         else:
-            m = -1
-            for filename in os.listdir('trained models/'):
-                a = filename.replace('episode-', '')
-                a = int(a.replace('-snake.h5',''))
-                if a > m:
-                    m = a
-            self._load_model('trained models/episode-'+str(m)+'-snake.h5')
+            list_of_saved_nets = os.listdir('trained models/')
+            if list_of_saved_nets:
+                m = -1
+                prefix = 'episode-'
+                suffix = '-snake.h5'
+                for file_name in list_of_saved_nets:
+                    k = file_name.replace(suffix, '')
+                    k = k.replace(prefix, '')
+                    chkpoint = int(k)
+                    if chkpoint > m:
+                        m = chkpoint
+                global current_episode 
+                current_episode = m
+                self._load_model('trained models/'+prefix+str(m)+suffix)
+            else:
+                print(colored('FATAL: DIRECTORY EMPTY', 'red')) 
+                quit(0)
+                
 
     def _load_model(self, directory):
         self.model = load_model(directory)
-        print("Loaded Model From:", directory)
-
+        print(colored('Loaded Model From: ' + directory, 'magenta')) 
 
     def _save_model(self, directory):
         self.model.save(directory)
-        print("Created Model. Saved to:", directory)
-
+        print(colored('Saved Model To: ' + directory, 'green')) 
 
     def _create_training_function(self):
         
-        action_prob_placeholder = self.model.output
+        action_prob_placeholder = self.model.output 
         action_onehot_placeholder = keras_back.placeholder(shape=(None, self.output_dim), name="action_onehot")
         discount_reward_placeholder = keras_back.placeholder(shape=(None,), name="discount_reward")
 
@@ -373,7 +389,7 @@ class SnakeGame:
         loss = -1*log_action_prob * discount_reward_placeholder
         loss = keras_back.mean(loss)
 
-        adam = optimizers.Adam()
+        adam = optimizers.Adam(lr=learning_rate)
 
         updates = adam.get_updates(params=self.model.trainable_weights,
                                    loss=loss)
@@ -384,44 +400,30 @@ class SnakeGame:
 
     def _get_state_action(self, state_input):
         action_prob = np.squeeze(self.model.predict(np.asarray([state_input])))
+        # action_prob = self.model.predict(np.asarray([state_input]))[0]
         val = np.random.choice(np.arange(self.output_dim), p=action_prob)
         # print(action_prob)
         # val = np.argmax(action_prob)
         return val
     
     def _train (self, S, A, R):
-        """Train a network
-        Args:
-            S (2-D Array): `state` array of shape (n_samples, state_dimension)
-            A (1-D Array): `action` array of shape (n_samples,)
-                It's simply a list of int that stores which actions the agent chose
-            R (1-D Array): `reward` array of shape (n_samples,)
-                A reward is given after each action.
-        """
         action_onehot = np_utils.to_categorical(A, num_classes=self.output_dim)
         discount_reward = self._compute_discounted_rewards(R, discount_rate=gamma)
         self.training_function([S, action_onehot, discount_reward])
 
     def _train_episode(self, s, a, r, game):
-        while len(r) != len(s) and r:
-            r.pop()    
-        directory = 'trained models/'
-        states = np.array(s)
-        actions = np.array(a)
-        rewards = np.array(r)
-        self._train(states, actions, rewards)
-        if game % save_interval == 0 and game:
-            self._save_model(directory+"episode-"+str(game)+"-snake.h5")
+        if s and a and r:
+            while len(r) > len(s):
+                r.pop()    
+            directory = 'trained models/'
+            states = np.asarray(s)
+            actions = np.asarray(a)
+            rewards = np.asarray(r)
+            self._train(states, actions, rewards)
+            if game % save_interval == 0 and game:
+                self._save_model(directory+"episode-"+str(game)+"-snake.h5")
 
     def _compute_discounted_rewards (self, R, discount_rate=.99):
-        """Returns discounted rewards
-        Args:
-            R (1-D array): a list of `reward` at each time step
-            discount_rate (float): Will discount the future value by this rate
-        Returns:
-            discounted_r (1-D array): same shape as input `R`
-                but the values are discounted
-        """
         discounted_r = np.zeros_like(R, dtype=np.float32)
         running_add = 0
         for t in reversed(range(len(R))):
@@ -431,8 +433,9 @@ class SnakeGame:
         return discounted_r
 
 def main():
+    colorama.init()
     snake = SnakeGame(500, 20)
-    snake.run_game(90)
+    snake.run_game(60)
 
 if __name__ == "__main__":
     main()
