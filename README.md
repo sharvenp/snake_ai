@@ -12,3 +12,8 @@ This is the AI playing after training on 28,950 games (It's pretty decent):
 <p align="center">
   <img width="500" height="500" src=recording.gif>
 </p>
+
+# Dependencies
+- keras
+- pygame
+- termcolor (print colored text to terminal 😎)
