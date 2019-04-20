@@ -25,9 +25,9 @@ class AI_Training_Simulation:
         
         # Constant Params
         # Snake Game
-        self.SNAKE_COLOR = (255,255,255)
+        self.SNAKE_COLOR = (80,255,80)
         self.SNAKE_VISION_COLOR = (255,0,255)
-        self.FOOD_COLOR = (255,255,100)   
+        self.FOOD_COLOR = (255,80,80)   
         self.BORDER_COLOR = (75,75,75)
         self.BACKGROUND_COLOR = (0,0,0)
 
@@ -38,8 +38,8 @@ class AI_Training_Simulation:
 
         # Rewards
         self.FOOD_REWARD = 300
-        self.DEATH_REWARD = -150
-        self.IDLE_REWARD = -5
+        self.DEATH_REWARD = -190
+        self.IDLE_REWARD = -8
 
         self.current_episode = 0
 
@@ -214,6 +214,7 @@ class AI_Training_Simulation:
             
             self._reset_game()
             states, actions, rewards = [], [], []
+            frame = 0
 
             while self._get_game_state():
 
@@ -281,13 +282,13 @@ class AI_Training_Simulation:
                     action = self._get_state_action(vision_data)
                     actions.append(action)
 
-                    if action == 0 and (self.curr_snake_dir != 1 or self.snake_length == 1):
+                    if action == 0 and self.curr_snake_dir != 1:
                         self.curr_snake_dir = 0
-                    elif action == 2 and (self.curr_snake_dir != 3 or self.snake_length == 1):
+                    elif action == 2 and self.curr_snake_dir != 3:
                         self.curr_snake_dir = 2
-                    elif action == 1 and (self.curr_snake_dir != 0 or self.snake_length == 1):
+                    elif action == 1 and self.curr_snake_dir != 0:
                         self.curr_snake_dir = 1
-                    elif action == 3 and (self.curr_snake_dir != 2 or self.snake_length == 1):
+                    elif action == 3 and self.curr_snake_dir != 2:
                         self.curr_snake_dir = 3
 
                     # Update Direction Vector Based on Movement State
@@ -314,6 +315,11 @@ class AI_Training_Simulation:
                     # Delay to conrol frame rate
                     time.sleep(1/frame_rate)
 
+                    # Outputs frames of episode to record game
+                    # pg.image.save(screen, f'generated images/{frame}.png')
+
+                    frame += 1
+
             elapsed_time = time.time() - start_time
             time_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
             
@@ -325,6 +331,7 @@ class AI_Training_Simulation:
 
             self._train_episode(states, actions, rewards, game)
             states, actions, rewards = [], [], []
+            frame = 0
 
 ####################################################################################################################
 # -------------------------------------------------- AI Methods -------------------------------------------------- #
@@ -443,7 +450,7 @@ class AI_Training_Simulation:
 def main():
     colorama.init() # This enables colored print statements
     s = AI_Training_Simulation(500, 20, load_from_file=True)
-    s.run(75)
+    s.run(75, draw_snake_vision=False)
 
 if __name__ == "__main__":
     main()
