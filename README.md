@@ -20,5 +20,4 @@ This is the AI playing after training on 28,950 games (It's pretty decent):
 
 # Usage
 - Run snake_ai.py and make sure there is a "trained models" folder in the same directory as the script; this is where the trained models will be saved. After running, a window will appear and the agent will continuously play and learn. The parameters of the game can be adjusted in the __init__ of the main class in the script
-//
 - Run keyboard_snake.py if you just want to play snake 😄 (controls are WASD or Arrow Keys)
