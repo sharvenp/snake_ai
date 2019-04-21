@@ -30,6 +30,7 @@ class AI_Training_Simulation:
         self.FOOD_COLOR = (255,80,80)   
         self.BORDER_COLOR = (75,75,75)
         self.BACKGROUND_COLOR = (0,0,0)
+        self.FRAME_RATE = 75
 
         # Neural Net
         self.LEARNING_RATE = 0.005
@@ -200,7 +201,7 @@ class AI_Training_Simulation:
         x2, y2 = p2
         return m.sqrt(((x2-x1)**2) + ((y2-y1)**2))
 
-    def run(self, frame_rate, draw_snake_vision=False):
+    def run(self, draw_snake_vision=False):
 
         # Run the snake simulation
         screen = pg.display.set_mode((self.x, self.y))
@@ -450,7 +451,7 @@ class AI_Training_Simulation:
 def main():
     colorama.init() # This enables colored print statements
     s = AI_Training_Simulation(500, 20, load_from_file=True)
-    s.run(75, draw_snake_vision=False)
+    s.run(draw_snake_vision=False)
 
 if __name__ == "__main__":
     main()
